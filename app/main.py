@@ -41,6 +41,11 @@ app.include_router(webhook.router)
 app.include_router(stats.router)
 
 
+@app.get("/")
+def root():
+    return {"service": "LinkPlease", "status": "ok", "endpoints": ["/health", "/webhook", "/rules", "/stats"]}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
