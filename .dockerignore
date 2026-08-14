@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+*.pyc
+__pycache__
+.pytest_cache
+.hypothesis
+tests/
+scripts/
+PLAN.md
+linkplease.db
+linkplease.db-shm
+linkplease.db-wal
