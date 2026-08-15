@@ -396,7 +396,7 @@ class TestEdgeCases:
         assert event is not None
 
     def test_no_matching_rules(self, client, db):
-        webhook_post(client, make_event("evt_001", "PRICE please"))
+        webhook_post(client, make_event("evt_001", "NICE photo"))
         assert db.query(DMDelivery).count() == 0
 
     def test_event_id_persisted(self, client, db):

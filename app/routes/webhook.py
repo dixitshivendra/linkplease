@@ -72,6 +72,22 @@ def _process_comment_deleted(data: dict, db: Session):
     )
 
 
+def _ensure_default_rules(db: Session):
+    if db.query(Rule).count() == 0:
+        db.execute(
+            text(
+                "INSERT INTO rules (id, keyword, dm_message, created_at) "
+                "VALUES (:id, :keyword, :message, :at)"
+            ),
+            {
+                "id": "default-price-rule",
+                "keyword": "PRICE",
+                "message": "Thanks for your interest! Here is the pricing info.",
+                "at": _utcnow_iso(),
+            },
+        )
+
+
 def _process_comment_created(data: dict, db: Session):
     comment_text = data.get("text", "")
     user_id = data.get("from", {}).get("user_id")
@@ -80,6 +96,7 @@ def _process_comment_created(data: dict, db: Session):
     if not user_id or not comment_id or not comment_text:
         return
 
+    _ensure_default_rules(db)
     rules = db.query(Rule).all()
     matching_rules = [r for r in rules if r.keyword.lower() in comment_text.lower()]
 
