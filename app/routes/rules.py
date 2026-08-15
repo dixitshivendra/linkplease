@@ -10,6 +10,13 @@ router = APIRouter()
 
 @router.post("/rules", response_model=RuleResponse, status_code=201)
 def create_rule(rule: RuleCreate, db: Session = Depends(get_db)):
+    existing = db.query(Rule).filter(Rule.keyword == rule.keyword).first()
+    if existing:
+        return RuleResponse(
+            rule_id=existing.id,
+            keyword=existing.keyword,
+            dm_message=existing.dm_message,
+        )
     db_rule = Rule(id=str(uuid.uuid4()), keyword=rule.keyword, dm_message=rule.dm_message)
     db.add(db_rule)
     db.commit()
