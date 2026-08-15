@@ -1,12 +1,34 @@
 # FAILURES.md — LinkPlease Assignment
 
+## Test Results (final)
+
+**Run:** `run_2c597f04ed3d` — 500 events / 10 seconds
+
+| Metric | Value |
+|--------|-------|
+| Events generated | 500 |
+| Webhook deliveries (incl. redeliveries) | 537 |
+| HTTP 200 from our service | 537 |
+| Unique recipients matched | 93 |
+| DMs sent (delivered) | 77 |
+| DMs failed | 14 |
+| DMs cancelled (comment.deleted) | 2 |
+| Duplicates blocked | 57 |
+| Queued (drained) | 0 |
+| Rate limit breached | Never |
+
+**Reconciliation equations (all pass):**
+1. `93 unique == 77 sent + 14 failed + 2 cancelled`
+2. `150 keyword-matched events == 93 first events + 57 duplicate blocks`
+3. `537 webhooks == all received, 0 dropped`
+
 ## Known failure modes
 
 ### 1. Render free tier cold-start drops webhooks (observed)
 
 If the Render service has been idle for ~15 minutes, it enters sleep mode. When PseudoGram's burst arrives, the service takes 30-60 seconds to wake up. During this window, webhooks are dropped silently — PseudoGram sees HTTP 200 from Render's edge, but our application never receives the request.
 
-**Evidence:** During an unwarmed test, PseudoGram reported `webhook_200_count: 542` but our application recorded substantially fewer webhook events (314). After adding warm-up pings, all 532 webhooks were received and processed.
+**Evidence:** During an unwarmed test, PseudoGram reported `webhook_200_count: 542` but our application recorded substantially fewer webhook events (314). After adding warm-up pings, all 537 webhooks were received and processed.
 
 **Mitigation:** Warm-up pings before the grader runs. A permanent fix would require a paid tier or always-on hosting.
 
@@ -20,7 +42,7 @@ SQLite allows only one writer at a time, even in WAL mode. With `busy_timeout=50
 
 After a DM is sent and accepted by PseudoGram (status = `queued`), there is a window before the next reconciliation poll where PseudoGram may have internally failed the DM. During this window, `/stats` reports the DM as `queued` rather than `failed`, which is temporarily inaccurate.
 
-**Evidence:** In the 500-event test, `queued` peaked at 81 before draining to 0. The PseudoGRAM truth showed 14 final failures that were initially counted as queued.
+**Evidence:** In the 500-event test, `queued` peaked at 81 before draining to 0. The PseudoGram truth showed 14 final failures that were initially counted as queued.
 
 **Mitigation:** Reconciliation runs every 5 seconds. The stats converge to accurate values within one reconciliation cycle.
 
@@ -28,7 +50,7 @@ After a DM is sent and accepted by PseudoGram (status = `queued`), there is a wi
 
 If a `comment.deleted` event arrives before the corresponding `comment.created` event (possible given the spec says order is not guaranteed), the system cancels a DM that doesn't exist yet. If the `comment.created` event arrives later, it creates a new DM that will never be cancelled.
 
-**Evidence:** We estimated ~12 DMs were cancelled by `comment.deleted` events in the 500-event test. The ordering was correct in our tests, but the race condition exists.
+**Evidence:** 2 DMs were cancelled by `comment.deleted` events in the 500-event test. The ordering was correct in our tests, but the race condition exists.
 
 **Mitigation:** None implemented. A production system would track pending deletions and apply them retroactively.
 
