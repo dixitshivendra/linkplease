@@ -6,7 +6,7 @@
 
 If the Render service has been idle for ~15 minutes, it enters sleep mode. When PseudoGram's burst arrives, the service takes 30-60 seconds to wake up. During this window, webhooks are dropped silently — PseudoGram sees HTTP 200 from Render's edge, but our application never receives the request.
 
-**Evidence:** During an unwarmed test, PseudoGram reported `webhook_200_count: 542` but our DB only recorded 314 events. After adding warm-up pings, all 532 webhooks were received.
+**Evidence:** During an unwarmed test, PseudoGram reported `webhook_200_count: 542` but our application recorded substantially fewer webhook events (314). After adding warm-up pings, all 532 webhooks were received and processed.
 
 **Mitigation:** Warm-up pings before the grader runs. A permanent fix would require a paid tier or always-on hosting.
 
