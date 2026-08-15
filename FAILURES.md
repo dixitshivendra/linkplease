@@ -2,25 +2,25 @@
 
 ## Test Results (final)
 
-**Run:** `run_2c597f04ed3d` — 500 events / 10 seconds
+**Run:** `run_3f0a6963f399` — 500 events / 10 seconds
 
 | Metric | Value |
 |--------|-------|
 | Events generated | 500 |
-| Webhook deliveries (incl. redeliveries) | 537 |
-| HTTP 200 from our service | 537 |
-| Unique recipients matched | 93 |
-| DMs sent (delivered) | 77 |
-| DMs failed | 14 |
-| DMs cancelled (comment.deleted) | 2 |
-| Duplicates blocked | 57 |
+| Webhook deliveries (incl. redeliveries) | 543 |
+| HTTP 200 from our service | 543 |
+| Unique recipients expected | 99 |
+| DMs sent (delivered) | 76 |
+| DMs failed | 13 |
+| DMs cancelled (comment.deleted) | 10 |
+| Duplicates blocked | 55 |
 | Queued (drained) | 0 |
 | Rate limit breached | Never |
 
 **Reconciliation equations (all pass):**
-1. `93 unique == 77 sent + 14 failed + 2 cancelled`
-2. `150 keyword-matched events == 93 first events + 57 duplicate blocks`
-3. `537 webhooks == all received, 0 dropped`
+1. `99 expected == 76 sent + 13 failed + 10 cancelled`
+2. `543 webhooks == all received, 0 dropped`
+3. Queue fully drained, all DMs in terminal state
 
 ## Known failure modes
 
