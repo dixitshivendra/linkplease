@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from app.database import SessionLocal, engine, Base
-from app.models import Rule, DMDelivery, ProcessedEvent, DuplicateCounter  # noqa: F401 — ensure metadata loaded
+from app.models import Rule, DMDelivery, ProcessedEvent, DuplicateCounter
 from app.services.rate_limiter import RollingRateLimiter
 from app.services.dm_sender import send_dm, check_dm_status
 
@@ -12,6 +12,7 @@ MAX_RETRIES_5XX = 5
 MAX_RETRIES_429 = 3
 TICK_INTERVAL = 0.5
 RECONCILE_TICKS = 10
+STALE_SENDING_THRESHOLD_SECONDS = 30
 
 
 def _utcnow():
@@ -108,7 +109,6 @@ def _handle_send_400(db, delivery_id: str):
 
 
 def _claim_queued_delivery(db) -> dict | None:
-    """Claim a queued delivery for reconciliation check (status must be 'queued' with a dm_id)."""
     now = _utcnow_iso()
     row = db.execute(
         text(
@@ -158,7 +158,6 @@ def _handle_reconcile_retry(db, delivery_id: str, delay_seconds: float):
 
 
 async def _reconcile_one(db) -> bool:
-    """Check one queued delivery. Returns True if a delivery was processed."""
     delivery = _claim_queued_delivery(db)
     if delivery is None:
         return False
@@ -192,13 +191,9 @@ async def _reconcile_one(db) -> bool:
     return True
 
 
-STALE_SENDING_THRESHOLD_SECONDS = 60
-
-
 def _recover_stale_sending(db):
-    """Reset deliveries stuck in 'sending' state (worker crash recovery)."""
     cutoff = (_utcnow() - timedelta(seconds=STALE_SENDING_THRESHOLD_SECONDS)).isoformat()
-    db.execute(
+    result = db.execute(
         text(
             "UPDATE dm_deliveries "
             "SET status = 'pending', next_retry_at = NULL, updated_at = :now "
@@ -206,7 +201,9 @@ def _recover_stale_sending(db):
         ),
         {"now": _utcnow_iso(), "cutoff": cutoff},
     )
+    recovered = result.rowcount
     db.commit()
+    return recovered
 
 
 async def worker_loop():
@@ -214,19 +211,32 @@ async def worker_loop():
     limiter = RollingRateLimiter(max_requests=10, window_seconds=60)
     tick_count = 0
 
-    # Recover stale 'sending' deliveries on startup
     startup_db = SessionLocal()
     try:
-        _recover_stale_sending(startup_db)
+        recovered = _recover_stale_sending(startup_db)
+        print(f"[worker] started, recovered {recovered} stale sending deliveries", flush=True)
     finally:
         startup_db.close()
 
-    print("[worker] started")
-
     while True:
+        tick_count += 1
         db = SessionLocal()
         try:
-            # Phase 1: send pending deliveries
+            if tick_count % 20 == 0:
+                recovered = _recover_stale_sending(db)
+                if recovered:
+                    print(f"[worker] tick {tick_count}: recovered {recovered} stale sending deliveries", flush=True)
+
+            stats = db.execute(text(
+                "SELECT "
+                "  COUNT(*) FILTER (WHERE status='pending') AS pending, "
+                "  COUNT(*) FILTER (WHERE status='sending') AS sending, "
+                "  COUNT(*) FILTER (WHERE status='retrying') AS retrying, "
+                "  COUNT(*) FILTER (WHERE status='queued') AS queued "
+                "FROM dm_deliveries"
+            )).mappings().first()
+            print(f"[worker] tick {tick_count}: {dict(stats)}", flush=True)
+
             delivery = _claim_delivery(db)
             if delivery is not None:
                 db.commit()
@@ -252,7 +262,6 @@ async def worker_loop():
                     )
                     _handle_send_5xx(db, delivery_id, delivery["attempts"])
                     db.close()
-                    tick_count += 1
                     await asyncio.sleep(TICK_INTERVAL)
                     continue
 
@@ -279,18 +288,16 @@ async def worker_loop():
 
             db.close()
         except Exception as e:
-            print(f"[worker] send error: {e}")
+            print(f"[worker] tick {tick_count} error: {type(e).__name__}: {e}", flush=True)
             db.close()
 
-        # Phase 2: reconcile queued deliveries (every N ticks)
-        tick_count += 1
         if tick_count % RECONCILE_TICKS == 0:
             db = SessionLocal()
             try:
                 while await _reconcile_one(db):
                     pass
             except Exception as e:
-                print(f"[worker] reconcile error: {e}")
+                print(f"[worker] reconcile error: {e}", flush=True)
             finally:
                 db.close()
 
